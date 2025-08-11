@@ -1,4 +1,5 @@
 #Requires -RunAsAdministrator
+
 <#
 .SYNOPSIS
 Synchronizes local system time with NTP servers (UTC-3, no DST)
@@ -15,7 +16,6 @@ param (
     [string]$NTPServer = "pool.ntp.org"  # Default NTP pool (can be changed)
 )
 
-#region Initial Checks
 # Admin check
 $currentUser = [Security.Principal.WindowsIdentity]::GetCurrent()
 $adminRole = [Security.Principal.WindowsBuiltInRole]::Administrator
@@ -38,7 +38,6 @@ catch {
     exit 1
 }
 
-#region NTP Time Fetch
 function Get-NtpTime {
     param(
         [string]$Server,
@@ -52,8 +51,8 @@ function Get-NtpTime {
             [System.Net.Sockets.SocketType]::Dgram,
             [System.Net.Sockets.ProtocolType]::Udp
         )
-        $socket.ReceiveTimeout = 2000
-        $socket.SendTimeout = 2000
+        $socket.ReceiveTimeout = 999
+        $socket.SendTimeout = 999
         
         # Construct NTP request
         $ntpData = [byte[]]::new(48)
@@ -93,32 +92,28 @@ function Get-NtpTime {
     }
 }
 
-Write-Host "Warming up NTP connection..." -ForegroundColor Cyan
-# Perform 3 warmup requests to stabilize the network route
-1..3 | ForEach-Object {
+# Perform 5 warmup requests to stabilize the network route
+Write-Host "Warming up NTP connection..."
+1..5 | ForEach-Object {
     Get-NtpTime -Server $NTPServer -WarmupOnly
     Start-Sleep -Milliseconds 100
-    Write-Verbose "Warmup request $_ completed" -Verbose
+    Write-Host "Warmup request $_ completed" -Verbose
 }
 
-Write-Host "Fetching time from $NTPServer..." -ForegroundColor Cyan
-# Now get the actual time after warmup
+# Get the actual time after warmup
 $utcTime = Get-NtpTime -Server $NTPServer
-Write-Verbose "Received UTC time: $($utcTime.ToString('o'))" -Verbose
-#endregion
+Write-Host "Warmed up UTC time: $($utcTime.ToString('o'))" -Verbose
 
-#region Time Adjustment
 # Convert to UTC-3 (hardcoded offset)
 $localTime = $utcTime.AddHours(-3)
-Write-Verbose "Adjusted local time (UTC-3): $($localTime.ToString('o'))" -Verbose
+Write-Host "Adjusted local time (UTC-3): $($localTime.ToString('o'))" -Verbose
 
-# Set system time
+# Update system time
 try {
     Set-Date -Date $localTime
-    Write-Host "Success! Time updated to: $($localTime.ToString('yyyy-MM-dd HH:mm:ss'))" -ForegroundColor Green
+    Write-Host "Success!" -ForegroundColor Green
 }
 catch {
     Write-Error "Time set failed: $_"
     exit 1
 }
-#endregion
