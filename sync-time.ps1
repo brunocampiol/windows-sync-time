@@ -24,12 +24,19 @@ if (-not ([Security.Principal.WindowsPrincipal]$currentUser).IsInRole($adminRole
     exit 1
 }
 
-# Network connectivity check
-if (-not (Test-Connection -ComputerName $NTPServer -Count 2 -Quiet)) {
-    Write-Error "Network unavailable or NTP server unreachable: $NTPServer"
+# Network connectivity check with timeout
+try {
+    $ping = New-Object System.Net.NetworkInformation.Ping
+    $result = $ping.Send($NTPServer, 2000)  # 2000ms = 2 seconds timeout
+    if ($result.Status -ne 'Success') {
+        Write-Error "Network unavailable or NTP server unreachable: $NTPServer"
+        exit 1
+    }
+}
+catch {
+    Write-Error "Network connectivity test failed: $_"
     exit 1
 }
-#endregion
 
 #region NTP Time Fetch
 function Get-NtpTime {
@@ -45,7 +52,8 @@ function Get-NtpTime {
             [System.Net.Sockets.SocketType]::Dgram,
             [System.Net.Sockets.ProtocolType]::Udp
         )
-        $socket.ReceiveTimeout = 5000  # 5-second timeout
+        $socket.ReceiveTimeout = 2000
+        $socket.SendTimeout = 2000
         
         # Construct NTP request
         $ntpData = [byte[]]::new(48)
@@ -78,7 +86,10 @@ function Get-NtpTime {
         }
     }
     finally {
-        if ($socket) { $socket.Close() }
+        if ($socket) { 
+            $socket.Close() 
+            $socket.Dispose()
+        }
     }
 }
 
@@ -86,7 +97,7 @@ Write-Host "Warming up NTP connection..." -ForegroundColor Cyan
 # Perform 3 warmup requests to stabilize the network route
 1..3 | ForEach-Object {
     Get-NtpTime -Server $NTPServer -WarmupOnly
-    Start-Sleep -Milliseconds 100  # Small delay between warmup requests
+    Start-Sleep -Milliseconds 100
     Write-Verbose "Warmup request $_ completed" -Verbose
 }
 
