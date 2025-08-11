@@ -16,26 +16,22 @@ param (
     [string]$NTPServer = "pool.ntp.org"  # Default NTP pool (can be changed)
 )
 
-# Admin check
-$currentUser = [Security.Principal.WindowsIdentity]::GetCurrent()
-$adminRole = [Security.Principal.WindowsBuiltInRole]::Administrator
-if (-not ([Security.Principal.WindowsPrincipal]$currentUser).IsInRole($adminRole)) {
-    Write-Error "PLEASE RUN AS ADMINISTRATOR! Right-click -> 'Run as administrator'"
-    exit 1
+function IsAdmin {
+    $currentUser = [Security.Principal.WindowsIdentity]::GetCurrent()
+    $adminRole = [Security.Principal.WindowsBuiltInRole]::Administrator
+    return ([Security.Principal.WindowsPrincipal]$currentUser).IsInRole($adminRole)
 }
 
-# Network connectivity check with timeout
-try {
-    $ping = New-Object System.Net.NetworkInformation.Ping
-    $result = $ping.Send($NTPServer, 2000)  # 2000ms = 2 seconds timeout
-    if ($result.Status -ne 'Success') {
-        Write-Error "Network unavailable or NTP server unreachable: $NTPServer"
-        exit 1
+function HasNetworkConnection {
+    param([string]$Server)
+    try {
+        $ping = New-Object System.Net.NetworkInformation.Ping
+        $result = $ping.Send($Server, 2000)  # 2000ms timeout
+        return ($result.Status -eq 'Success')
     }
-}
-catch {
-    Write-Error "Network connectivity test failed: $_"
-    exit 1
+    catch {
+        return $false
+    }
 }
 
 function Get-NtpTime {
@@ -78,27 +74,42 @@ function Get-NtpTime {
     return $ntpEpoch.AddMilliseconds($ms)
 }
 
+function Sync-SystemTime {
+    param([string]$Server)
 
-try {
-    # Perform 5 warmup requests to stabilize the network route
+    # Warmup requests
     Write-Host "Warming up NTP connection..."
     1..5 | ForEach-Object {
-        Get-NtpTime -Server $NTPServer -WarmupOnly
+        Get-NtpTime -Server $Server -WarmupOnly
         Start-Sleep -Milliseconds 100
         Write-Host "Warmup request $_ completed"
     }
 
-    # Get the actual time after warmup
-    $utcTime = Get-NtpTime -Server $NTPServer
+    # Actual time retrieval
+    $utcTime = Get-NtpTime -Server $Server
     Write-Host "Warmed up UTC time: $($utcTime.ToString('o'))"
 
-    # Convert to UTC-3 (hardcoded offset)
+    # Adjust for UTC-3
     $localTime = $utcTime.AddHours(-3)
     Write-Host "Adjusted local time (UTC-3): $($localTime.ToString('o'))"
 
-    # Update system time
+    # Update system clock
     Set-Date -Date $localTime
     Write-Host "Success!" -ForegroundColor Green
+}
+
+try {
+    if (-not (IsAdmin)) {
+        Write-Error "Run as ADMINISTRATOR! Right-click -> 'Run as administrator'"
+        exit 1
+    }
+
+    if (-not (HasNetworkConnection -Server $NTPServer)) {
+        Write-Error "Network unavailable or NTP server unreachable: $NTPServer"
+        exit 1
+    }
+
+    Sync-SystemTime -Server $NTPServer
 }
 catch {
     Write-Error "Error: $($_.Exception.Message)"
