@@ -3,7 +3,7 @@ cd /d "%~dp0"
 echo Installing Windows Time Sync components...
 
 :: Copy PowerShell script to local app data
-copy /Y "sync-time.ps1" "%LOCALAPPDATA%\sync-time.ps1"
+copy /Y "sync-time.ps1" "%ProgramData%\sync-time.ps1"
 
 :: Remove existing task if it exists (suppress errors with 2>nul)
 schtasks /delete /tn "\Sync Time From Internet" /f 2>nul

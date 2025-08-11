@@ -78,28 +78,32 @@ function Get-NtpTime {
     return $ntpEpoch.AddMilliseconds($ms)
 }
 
-# Perform 5 warmup requests to stabilize the network route
-Write-Host "Warming up NTP connection..."
-1..5 | ForEach-Object {
-    Get-NtpTime -Server $NTPServer -WarmupOnly
-    Start-Sleep -Milliseconds 100
-    Write-Host "Warmup request $_ completed"
-}
 
-# Get the actual time after warmup
-$utcTime = Get-NtpTime -Server $NTPServer
-Write-Host "Warmed up UTC time: $($utcTime.ToString('o'))"
-
-# Convert to UTC-3 (hardcoded offset)
-$localTime = $utcTime.AddHours(-3)
-Write-Host "Adjusted local time (UTC-3): $($localTime.ToString('o'))"
-
-# Update system time
 try {
+    # Perform 5 warmup requests to stabilize the network route
+    Write-Host "Warming up NTP connection..."
+    1..5 | ForEach-Object {
+        Get-NtpTime -Server $NTPServer -WarmupOnly
+        Start-Sleep -Milliseconds 100
+        Write-Host "Warmup request $_ completed"
+    }
+
+    # Get the actual time after warmup
+    $utcTime = Get-NtpTime -Server $NTPServer
+    Write-Host "Warmed up UTC time: $($utcTime.ToString('o'))"
+
+    # Convert to UTC-3 (hardcoded offset)
+    $localTime = $utcTime.AddHours(-3)
+    Write-Host "Adjusted local time (UTC-3): $($localTime.ToString('o'))"
+
+    # Update system time
     Set-Date -Date $localTime
     Write-Host "Success!" -ForegroundColor Green
 }
 catch {
-    Write-Error "Time set failed: $_"
+    Write-Error "Error: $($_.Exception.Message)"
+    Write-Error "---- FULL ERROR DETAILS ----"
+    $_ | Format-List * -Force
+    Write-Error "----------------------------"
     exit 1
 }

@@ -36,7 +36,7 @@ schtasks /delete /tn "\Sync Time From Internet" /f
 To remove the script:
 
 ```cmd
-del "%LOCALAPPDATA%\sync-time.ps1"
+del "%ProgramData%\sync-time.ps1"
 ```
 
 ## Security Note
